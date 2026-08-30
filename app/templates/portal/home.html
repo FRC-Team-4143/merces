@@ -1,0 +1,53 @@
+{% extends "portal/base.html" %}
+{% set active_page = 'home' %}
+{% block title %}My Balance — Merces{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h3 class="mb-0">My Balance</h3>
+</div>
+
+{% if message %}
+<div class="alert alert-secondary py-2">{{ message }}</div>
+{% endif %}
+
+{% if is_staff(session_identity(request)) %}
+<div class="card mb-4">
+  <div class="card-body d-flex align-items-center justify-content-between">
+    <div><i class="bi bi-shield-lock me-2"></i>You have admin/manager access.</div>
+    <a href="/admin" class="btn btn-sm btn-outline-primary">Open admin</a>
+  </div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+  <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+    <div>
+      <div class="text-muted small text-uppercase">Balance</div>
+      <div class="display-6 mb-0">{{ balance }} <span class="fs-6 text-muted">{{ currency_name() }}</span></div>
+    </div>
+    <a href="/store" class="btn btn-primary"><i class="bi bi-shop me-1"></i> Visit the store</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Recent activity</div>
+  <div class="card-body">
+    {% if not recent %}
+    <p class="text-muted mb-0">Nothing yet — earn some {{ currency_name() }} for good work!</p>
+    {% else %}
+    {% for t in recent %}
+    <div class="d-flex align-items-center justify-content-between border-bottom py-2" style="border-color:#2a1a1a !important;">
+      <div>
+        <div class="fw-semibold">{{ t.reason or t.kind.value|capitalize }}</div>
+        <div class="text-muted small">{{ t.created_at|localdt }}{% if t.kind.value == 'grant' %} · from {{ t.actor }}{% endif %}</div>
+      </div>
+      <div class="{% if t.delta > 0 %}text-success{% else %}text-danger{% endif %} fw-semibold">
+        {{ "%+d"|format(t.delta) }}
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

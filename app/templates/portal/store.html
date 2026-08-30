@@ -1,0 +1,58 @@
+{% extends "portal/base.html" %}
+{% set active_page = 'store' %}
+{% block title %}Store — Merces{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between mb-3 gap-2">
+  <h3 class="mb-0">Rewards Store</h3>
+  <div class="text-end">
+    <div class="text-muted small text-uppercase">Balance</div>
+    <div class="h5 mb-0">{{ balance }} {{ currency_name() }}</div>
+  </div>
+</div>
+
+{% if message %}
+<div class="alert alert-secondary py-2">{{ message }}</div>
+{% endif %}
+
+{% if not items %}
+<p class="text-muted">Nothing in the store yet — check back soon.</p>
+{% else %}
+<div class="row g-3">
+  {% for item in items %}
+  <div class="col-md-4 col-sm-6">
+    <div class="store-item h-100 p-3 d-flex flex-column">
+      {% if item.image_filename %}
+      <img src="/uploads/{{ item.image_filename }}" alt="" class="mb-2" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;">
+      {% else %}
+      <div class="mb-2 d-flex align-items-center justify-content-center" style="width:100%;aspect-ratio:1;background:#0d0d0d;border-radius:8px;font-size:3rem;">
+        {{ item.emoji or "🎁" }}
+      </div>
+      {% endif %}
+      <div class="fw-semibold">{{ item.name }}</div>
+      {% if item.description %}<div class="text-muted small mb-2">{{ item.description }}</div>{% endif %}
+      <div class="mt-auto d-flex align-items-center justify-content-between pt-2">
+        <span class="badge-pts">{{ item.cost }} {{ currency_name() }}</span>
+        {% if item.stock is not none %}<span class="text-muted small">{{ item.stock }} left</span>{% endif %}
+      </div>
+      <form method="post" action="/store/{{ item.id }}/redeem" class="mt-2">
+        {% set sizes = item.sizes|size_list %}
+        {% if sizes %}
+        <select name="size" class="form-select form-select-sm mb-2" required {% if balance < item.cost or (item.stock is not none and item.stock <= 0) %}disabled{% endif %}>
+          <option value="" disabled selected>Choose a size</option>
+          {% for s in sizes %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+        {% endif %}
+        <button class="btn btn-primary w-100" {% if balance < item.cost or (item.stock is not none and item.stock <= 0) %}disabled{% endif %}>
+          {% if item.stock is not none and item.stock <= 0 %}Out of stock
+          {% elif balance < item.cost %}Not enough {{ currency_name() }}
+          {% else %}Redeem
+          {% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

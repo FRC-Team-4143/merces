@@ -1,0 +1,44 @@
+{% extends "admin/base.html" %}
+{% block title %}Orders — Merces{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">Orders</h3>
+{% if message %}<div class="alert alert-secondary py-2">{{ message }}</div>{% endif %}
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table mb-0 align-middle">
+      <thead><tr><th>Order #</th><th>Student</th><th>Item</th><th>Cost</th><th>Ordered</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for o in orders %}
+        <tr>
+          <td class="text-muted">#{{ o.id }}</td>
+          <td class="fw-semibold">{{ o.member.name }}</td>
+          <td>{{ o.item_name }}{% if o.size %} <span class="text-muted small">({{ o.size }})</span>{% endif %}</td>
+          <td>{{ o.cost }}</td>
+          <td class="text-muted small">{{ o.created_at|localdt }}</td>
+          <td>
+            {% if o.status.value == 'fulfilled' %}<span class="badge bg-success">Picked up</span>
+            {% elif o.status.value == 'cancelled' %}<span class="badge bg-secondary">Cancelled</span>
+            {% else %}<span class="badge" style="background:#cc2200;">Awaiting pickup</span>
+            {% endif %}
+          </td>
+          <td class="text-end">
+            {% if o.status.value == 'ordered' %}
+            <form method="post" action="/admin/orders/{{ o.id }}/fulfill" class="d-inline">
+              <button class="btn btn-sm btn-outline-success">Mark picked up</button>
+            </form>
+            <form method="post" action="/admin/orders/{{ o.id }}/cancel" class="d-inline" onsubmit="return confirm('Cancel this order and refund {{ o.cost }}?');">
+              <button class="btn btn-sm btn-outline-danger">Cancel &amp; refund</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="text-muted text-center py-4">No orders yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

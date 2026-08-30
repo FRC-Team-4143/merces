@@ -1,0 +1,34 @@
+{% extends "admin/base.html" %}
+{% block title %}Ledger — Merces{% endblock %}
+
+{% macro sort_th(label, key) %}
+<th>
+  <a href="/admin/ledger?sort={{ key }}&dir={{ 'desc' if sort == key and dir == 'asc' else 'asc' }}"
+     class="text-decoration-none text-reset d-inline-flex align-items-center gap-1">
+    {{ label }}
+    {% if sort == key %}<i class="bi bi-caret-{{ 'up' if dir == 'asc' else 'down' }}-fill"></i>{% else %}<i class="bi bi-caret-down-fill opacity-25"></i>{% endif %}
+  </a>
+</th>
+{% endmacro %}
+
+{% block content %}
+<h3 class="mb-3">Ledger</h3>
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table mb-0 align-middle">
+      <thead><tr>{{ sort_th('Name', 'name') }}{{ sort_th('Balance', 'balance') }}<th></th></tr></thead>
+      <tbody>
+      {% for row in rows %}
+        <tr>
+          <td class="fw-semibold">{{ row.member.name }}</td>
+          <td>{{ row.balance }} {{ currency_name() }}</td>
+          <td class="text-end"><a href="/admin/ledger/{{ row.member.id }}" class="btn btn-sm btn-outline-primary">View</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="text-muted text-center py-4">No students yet — sync from Legion.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

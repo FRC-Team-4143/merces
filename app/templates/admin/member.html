@@ -1,0 +1,54 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ member.name }} — Merces{% endblock %}
+
+{% block content %}
+<a href="/admin/ledger" class="text-muted small"><i class="bi bi-arrow-left"></i> Back to ledger</a>
+<div class="d-flex align-items-center justify-content-between mt-2 mb-3">
+  <h3 class="mb-0">{{ member.name }}</h3>
+  <div class="h4 mb-0">{{ balance }} {{ currency_name() }}</div>
+</div>
+{% if message %}<div class="alert alert-secondary py-2">{{ message }}</div>{% endif %}
+
+{% if can_adjust %}
+<div class="card mb-4">
+  <div class="card-header">Manual adjustment</div>
+  <div class="card-body">
+    <form method="post" action="/admin/ledger/{{ member.id }}/adjust" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label">Amount (+/-)</label>
+        <input type="number" name="delta" class="form-control" required placeholder="e.g. -10 or 25">
+      </div>
+      <div class="col">
+        <label class="form-label">Reason</label>
+        <input type="text" name="reason" class="form-control" placeholder="Why this correction is being made">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-outline-primary">Apply</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">Transaction history</div>
+  <div class="card-body p-0">
+    <table class="table mb-0 align-middle">
+      <thead><tr><th>When</th><th>Kind</th><th>Amount</th><th>Reason</th><th>By</th></tr></thead>
+      <tbody>
+      {% for t in transactions %}
+        <tr>
+          <td class="text-muted small">{{ t.created_at|localdt }}</td>
+          <td class="text-muted text-capitalize">{{ t.kind.value }}</td>
+          <td class="{% if t.delta > 0 %}text-success{% else %}text-danger{% endif %}">{{ "%+d"|format(t.delta) }}</td>
+          <td>{{ t.reason or "—" }}</td>
+          <td class="text-muted">{{ t.actor }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="text-muted text-center py-4">No transactions yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

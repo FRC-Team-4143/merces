@@ -1,0 +1,142 @@
+{% extends "admin/base.html" %}
+{% block title %}Store — Merces{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h3 class="mb-0">Store</h3>
+  <div class="d-flex gap-2">
+    {% if show_archived %}
+    <a href="/admin/store" class="btn btn-outline-secondary btn-sm"><i class="bi bi-eye-slash me-1"></i> Hide Archived</a>
+    {% else %}
+    <a href="/admin/store?show_archived=1" class="btn btn-outline-secondary btn-sm"><i class="bi bi-archive me-1"></i> Show Archived</a>
+    {% endif %}
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#new-item"><i class="bi bi-plus-lg me-1"></i> Add item</button>
+  </div>
+</div>
+{% if message %}<div class="alert alert-secondary py-2">{{ message }}</div>{% endif %}
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table mb-0 align-middle">
+      <thead><tr><th></th><th>Name</th><th>Cost</th><th>Stock</th><th>Sizes</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for item in items %}
+        <tr {% if not item.is_active %}class="opacity-50"{% endif %}>
+          <td>
+            {% if item.image_filename %}
+            <img src="/uploads/{{ item.image_filename }}" alt="" style="width:2.5rem;height:2.5rem;object-fit:cover;border-radius:6px;">
+            {% else %}
+            <span class="fs-4">{{ item.emoji or "🎁" }}</span>
+            {% endif %}
+          </td>
+          <td class="fw-semibold">{{ item.name }}{% if item.description %}<div class="text-muted small">{{ item.description }}</div>{% endif %}</td>
+          <td>{{ item.cost }}</td>
+          <td class="text-muted">{{ item.stock if item.stock is not none else "∞" }}</td>
+          <td class="text-muted small">{{ item.sizes or "—" }}</td>
+          <td>{% if item.is_active %}<span class="badge" style="background:#cc2200;">Active</span>{% else %}<span class="badge bg-secondary">Archived</span>{% endif %}</td>
+          <td class="text-end text-nowrap">
+            <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#edit-{{ item.id }}">Edit</button>
+            <form method="post" action="/admin/store/{{ item.id }}/archive" class="d-inline">
+              <button class="btn btn-sm {% if item.is_active %}btn-outline-danger{% else %}btn-outline-success{% endif %}">
+                {{ 'Archive' if item.is_active else 'Restore' }}
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="text-muted text-center py-4">No items yet — add the first one.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% for item in items %}
+<div class="modal fade" id="edit-{{ item.id }}" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content" style="background:#111; border:1px solid #2a1a1a;">
+      <div class="modal-header" style="border-color:#2a1a1a;">
+        <h5 class="modal-title">Edit {{ item.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="edit-form-{{ item.id }}" method="post" action="/admin/store/{{ item.id }}/edit" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="mb-2"><label class="form-label">Name</label><input type="text" name="name" class="form-control" value="{{ item.name }}" required></div>
+          <div class="mb-2"><label class="form-label">Description</label><textarea name="description" class="form-control" rows="2">{{ item.description or "" }}</textarea></div>
+          <div class="row g-2 mb-2">
+            <div class="col-4"><label class="form-label">Cost</label><input type="number" name="cost" class="form-control" min="1" value="{{ item.cost }}" required></div>
+            <div class="col-4"><label class="form-label">Stock</label><input type="number" name="stock" class="form-control" min="0" value="{{ item.stock if item.stock is not none else '' }}" placeholder="unlimited"></div>
+            <div class="col-4"><label class="form-label">Emoji</label><input type="text" name="emoji" class="form-control" value="{{ item.emoji or '' }}" maxlength="8"></div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Sizes</label>
+            <input type="text" name="sizes" class="form-control" value="{{ item.sizes or '' }}" placeholder="S, M, L, XL">
+            <div class="form-text">Comma-separated. Leave blank if this item doesn't need a size (most items).</div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Photo</label>
+            {% if item.image_filename %}
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <img src="/uploads/{{ item.image_filename }}" alt="" style="width:4rem;height:4rem;object-fit:cover;border-radius:6px;border:1px solid #2a1a1a;">
+              <div class="form-check">
+                <input type="checkbox" name="remove_image" id="remove-image-{{ item.id }}" class="form-check-input">
+                <label class="form-check-label small" for="remove-image-{{ item.id }}">Remove photo</label>
+              </div>
+            </div>
+            {% endif %}
+            <input type="file" name="image" class="form-control" accept="image/png,image/jpeg,image/webp,image/gif">
+            <div class="form-text">{% if item.image_filename %}Choosing a new file replaces the current photo. {% endif %}Falls back to the emoji above when no photo is set.</div>
+          </div>
+          <div class="mb-2"><label class="form-label">Sort order</label><input type="number" name="sort_order" class="form-control" value="{{ item.sort_order }}"></div>
+          <div class="form-text">Use Archive/Restore on the Store page to control whether this item is visible, rather than deleting or recreating it.</div>
+        </div>
+      </form>
+      <div class="modal-footer d-flex justify-content-between" style="border-color:#2a1a1a;">
+        <form method="post" action="/admin/store/{{ item.id }}/delete"
+              onsubmit="return confirm('Delete {{ item.name }}? This can\'t be undone. Items with order history can only be archived, not deleted.');">
+          <button type="submit" class="btn btn-outline-danger">Delete</button>
+        </form>
+        <div>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" form="edit-form-{{ item.id }}" class="btn btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+<div class="modal fade" id="new-item" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" action="/admin/store" enctype="multipart/form-data" class="modal-content" style="background:#111; border:1px solid #2a1a1a;">
+      <div class="modal-header" style="border-color:#2a1a1a;">
+        <h5 class="modal-title">Add store item</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2"><label class="form-label">Name</label><input type="text" name="name" class="form-control" required></div>
+        <div class="mb-2"><label class="form-label">Description</label><textarea name="description" class="form-control" rows="2"></textarea></div>
+        <div class="row g-2 mb-2">
+          <div class="col-4"><label class="form-label">Cost</label><input type="number" name="cost" class="form-control" min="1" required></div>
+          <div class="col-4"><label class="form-label">Stock</label><input type="number" name="stock" class="form-control" min="0" placeholder="unlimited"></div>
+          <div class="col-4"><label class="form-label">Emoji</label><input type="text" name="emoji" class="form-control" maxlength="8" placeholder="🎁"></div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Sizes</label>
+          <input type="text" name="sizes" class="form-control" placeholder="S, M, L, XL">
+          <div class="form-text">Comma-separated. Leave blank if this item doesn't need a size (most items).</div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Photo (optional)</label>
+          <input type="file" name="image" class="form-control" accept="image/png,image/jpeg,image/webp,image/gif">
+          <div class="form-text">Falls back to the emoji above when no photo is set.</div>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-color:#2a1a1a;">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add item</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

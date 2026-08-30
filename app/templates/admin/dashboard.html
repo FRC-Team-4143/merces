@@ -1,0 +1,55 @@
+{% extends "admin/base.html" %}
+{% block title %}Dashboard — Merces{% endblock %}
+
+{% block content %}
+<h3 class="mb-4">Dashboard</h3>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-3 col-6">
+    <div class="card"><div class="card-body">
+      <div class="text-muted small text-uppercase">In circulation</div>
+      <div class="h4 mb-0 mt-1">{{ in_circulation }} {{ currency_name() }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card"><div class="card-body">
+      <div class="text-muted small text-uppercase">Orders awaiting pickup</div>
+      <div class="h4 mb-0 mt-1">{{ pending_orders }}</div>
+    </div></div>
+  </div>
+  <div class="col-md-3 col-6">
+    <div class="card"><div class="card-body">
+      <div class="text-muted small text-uppercase">Active members</div>
+      <div class="h4 mb-0 mt-1">{{ member_count }}</div>
+    </div></div>
+  </div>
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-4">
+  <a href="/admin/give" class="btn btn-primary"><i class="bi bi-gift me-1"></i> Give cash</a>
+  <a href="/admin/orders" class="btn btn-outline-primary"><i class="bi bi-bag-check me-1"></i> Orders{% if pending_orders %} ({{ pending_orders }}){% endif %}</a>
+  <a href="/admin/store" class="btn btn-outline-primary"><i class="bi bi-shop me-1"></i> Store</a>
+</div>
+
+<div class="card">
+  <div class="card-header">Recent grants</div>
+  <div class="card-body p-0">
+    <table class="table mb-0 align-middle">
+      <thead><tr><th>To</th><th>Amount</th><th>Reason</th><th>By</th><th>When</th></tr></thead>
+      <tbody>
+      {% for t in recent_grants %}
+        <tr>
+          <td class="fw-semibold">{{ t.member.name }}</td>
+          <td class="text-success">+{{ t.delta }}</td>
+          <td class="text-muted">{{ t.reason or "—" }}</td>
+          <td class="text-muted">{{ t.actor }}</td>
+          <td class="text-muted small">{{ t.created_at|localdt }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="text-muted text-center py-4">No grants yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "admin/base.html" %}
+{% block title %}Give Cash — Merces{% endblock %}
+
+{% block content %}
+<h3 class="mb-3">Give Cash</h3>
+{% if message %}<div class="alert alert-secondary py-2">{{ message }}</div>{% endif %}
+
+<div class="card" style="max-width:640px;">
+  <div class="card-body">
+    <form method="post" action="/admin/give">
+      <div class="mb-3">
+        <label class="form-label">Student(s)</label>
+        <select name="member_ids" class="form-select" multiple size="8" required>
+          {% for m in members %}
+          <option value="{{ m.id }}">{{ m.name }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Hold Ctrl/Cmd (or Shift for a range) to pick more than one. Mentors aren't eligible — {{ currency_name() }} is a student reward.</div>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Amount</label>
+        <input type="number" name="amount" class="form-control" min="1" required>
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Reason (optional, shown to the student)</label>
+        <input type="text" name="reason" class="form-control" placeholder="e.g. Helped run pit demo at outreach event">
+      </div>
+      <button class="btn btn-primary"><i class="bi bi-gift me-1"></i> Give {{ currency_name() }}</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
