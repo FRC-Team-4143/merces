@@ -31,9 +31,3 @@ app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads"
 app.include_router(portal.router)
 app.include_router(admin.router)
 app.include_router(slack.router)
-
-# Preview deploys only — see routers/dev_login.py. Unset in production ⇒ never mounted.
-if settings.dev_login_secret:
-    from app.routers import dev_login
-    app.include_router(dev_login.router)
-    print("⚠️  Merces /dev-login is ENABLED — this must not be a production config.")

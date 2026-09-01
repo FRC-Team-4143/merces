@@ -54,11 +54,5 @@ class Settings(BaseSettings):
     # Global toggle for all automated updates (Slack messages, scheduled jobs)
     updates_enabled: bool = True
 
-    # Dev / preview sign-in shim. When set, mounts `/dev-login` (see routers/dev_login.py),
-    # which mints an `mw_sso` cookie for THIS host — needed only on a preview deploy where
-    # Legion's real cookie (scoped to .marswars.org) can't reach. MUST stay unset in
-    # production; every /dev-login request has to present this exact value.
-    dev_login_secret: str = ""
-
 
 settings = Settings()

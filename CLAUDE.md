@@ -25,12 +25,6 @@ equal Legion's), `LEGION_BASE_URL`, `LEGION_API_KEY`. There is **no** admin pass
 (grant/store/orders — no ledger adjustments/settings/backup) group. The portal (`/me`,
 `/store`, `/orders`) is open to any active roster member.
 
-For a **preview deploy on a non-`marswars.org` host** (where Legion's real `mw_sso`
-cookie, scoped to `.marswars.org`, can't reach), set `DEV_LOGIN_SECRET` in `.env`: that
-mounts `routers/dev_login.py` at `/dev-login`, which mints a host-only `mw_sso` for this
-deploy — `/dev-login?key=<DEV_LOGIN_SECRET>&code=<member_code>&groups=merces-admin`.
-Unset in production ⇒ the router is never imported.
-
 ## Testing
 
 ```bash
