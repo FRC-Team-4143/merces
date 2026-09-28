@@ -1,10 +1,13 @@
 import os
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import init_db
+from app.database import get_db, init_db
 from app.routers import portal, admin, slack
 from app.services.scheduler import create_scheduler
 
@@ -31,3 +34,14 @@ app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads"
 app.include_router(portal.router)
 app.include_router(admin.router)
 app.include_router(slack.router)
+
+
+@app.get("/health")
+async def health(db: AsyncSession = Depends(get_db)):
+    """Unauthenticated liveness probe — Legion's admin dashboard polls this to show
+    Merces in its System Status panel."""
+    try:
+        await db.execute(text("SELECT 1"))
+    except Exception:  # noqa: BLE001 — any DB error means "not healthy"
+        return JSONResponse({"status": "error", "app": "merces"}, status_code=503)
+    return {"status": "ok", "app": "merces"}

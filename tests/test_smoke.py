@@ -5,6 +5,13 @@ from tests.conftest import make_sso_cookie
 
 
 @pytest.mark.asyncio
+async def test_health_needs_no_auth(client):
+    resp = await client.get("/health")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok", "app": "merces"}
+
+
+@pytest.mark.asyncio
 async def test_root_redirects_to_me(client):
     resp = await client.get("/", follow_redirects=False)
     assert resp.status_code == 307
