@@ -56,6 +56,12 @@ class Member(Base):
     )
     team_number: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     slack_user_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    # Denormalized from Legion's per-member `subteam` object, same as Virtus: a stale
+    # slug degrades to showing the slug rather than breaking an FK.
+    subteam_slug: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    subteam_label: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    # Legion's StudentGrade value (junior_high ... senior); None for mentors.
+    grade: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     # Legion group slugs this member holds, comma-joined (e.g. "merces-admin"). Not
     # currently used for authorization decisions (those read the live mw_sso cookie
     # instead), but kept for parity with the sibling apps and future use.
@@ -68,6 +74,10 @@ class Member(Base):
     transactions: Mapped[List["Transaction"]] = relationship(
         "Transaction", back_populates="member"
     )
+
+    @property
+    def subteam_display(self) -> str:
+        return self.subteam_label or self.subteam_slug or "—"
 
     def has_group(self, slug: str) -> bool:
         if not self.group_slugs:

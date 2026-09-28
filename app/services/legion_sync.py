@@ -106,6 +106,10 @@ async def _upsert_members(db: AsyncSession, members: list[dict]) -> int:
         row.kind = MemberKind.mentor if m["role"] == "mentor" else MemberKind.student
         row.team_number = m.get("team_number")
         row.slack_user_id = m.get("slack_user_id")
+        subteam = m.get("subteam") or {}
+        row.subteam_slug = subteam.get("slug")
+        row.subteam_label = subteam.get("label")
+        row.grade = m.get("grade")
         row.group_slugs = _group_slugs(m)
         row.is_active = m["is_active"]
         row.archived_at = None if m["is_active"] else (row.archived_at or datetime.utcnow())

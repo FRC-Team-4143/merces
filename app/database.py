@@ -39,6 +39,7 @@ async def init_db() -> None:
         await conn.run_sync(_add_store_item_image_column)
         await conn.run_sync(_add_store_item_sizes_column)
         await conn.run_sync(_add_redemption_size_column)
+        await conn.run_sync(_add_member_subteam_grade_columns)
 
 
 def _add_store_item_image_column(conn) -> None:
@@ -72,3 +73,20 @@ def _add_redemption_size_column(conn) -> None:
     columns = [c["name"] for c in inspector.get_columns("redemptions")]
     if "size" not in columns:
         conn.execute(text("ALTER TABLE redemptions ADD COLUMN size VARCHAR(40)"))
+
+
+def _add_member_subteam_grade_columns(conn) -> None:
+    """Add Legion's subteam and grade to `members` (roster parity with the siblings).
+    Populated by the next roster sync."""
+    from sqlalchemy import inspect, text
+    inspector = inspect(conn)
+    if "members" not in inspector.get_table_names():
+        return
+    columns = {c["name"] for c in inspector.get_columns("members")}
+    for name, ddl in (
+        ("subteam_slug", "VARCHAR(64)"),
+        ("subteam_label", "VARCHAR(120)"),
+        ("grade", "VARCHAR(20)"),
+    ):
+        if name not in columns:
+            conn.execute(text(f"ALTER TABLE members ADD COLUMN {name} {ddl}"))

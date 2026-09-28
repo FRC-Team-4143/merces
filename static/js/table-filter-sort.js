@@ -1,0 +1,495 @@
+/*
+ * Excel-style column filtering + sorting for admin tables. No dependencies beyond
+ * Bootstrap 5 (dropdown component + bundled Popper) which every admin page already
+ * loads. Opt a table in with `data-filter-sort`; declare columns via `data-col` on
+ * `<th>` and `data-value`/`data-label` on the matching `<td>`. Optionally set
+ * `data-empty-text` on the `<table>` to customize the "no rows match" placeholder
+ * shown when filters exclude every row. See CLAUDE.md / the roster/report pages for
+ * the full markup contract.
+ *
+ * A column sorts and filters on the same `data-value` by default (e.g. a name, or a
+ * category like "met"/"not_met"). A numeric column that should filter on a derived
+ * category instead of enumerating every distinct number — e.g. "Approved" hours,
+ * sortable numerically but filtered as ahead-of-requirement/not — sets
+ * `data-filter-value`/`data-filter-label` on the `<td>` too; when present these are
+ * used for filtering (funnel + visibility) while `data-value` still drives sorting.
+ *
+ * A cell that can belong to several filter categories at once (e.g. "missing these
+ * required opportunities", a list of names) sets `data-filter-values` instead — a
+ * comma-separated list. The funnel then lists every distinct name across all rows,
+ * each name is its own filter option (no `data-filter-label` needed — the name is the
+ * label), an empty list is treated as the `(none)` option, and a row matches if it's
+ * still `d-none`-eligible under every column, but *within* this one column a row is
+ * visible if it has ANY of the checked values (OR, not AND) — matches how "pick which
+ * tags to include" reads. Optionally set `data-filter-sort-type="text"` on the `<th>`
+ * to alphabetize the funnel list separately from a numeric row `data-sort-type`.
+ *
+ * Set `data-show-count="true"` on a `<th>` to append a live "(N)" after its label — how
+ * many rows the current filter combination leaves visible across every column, not just
+ * this one. Updates alongside the rows on every filter/sort change.
+ *
+ * A `<th>` marked `data-count="true"` has its own server-rendered `.fs-count` element
+ * kept in sync the same way (as "(N)").
+ *
+ * Each table's sort and filters are saved in sessionStorage per page + table position,
+ * so a full-page reload (every admin form submit redirects back) restores them.
+ */
+(function () {
+  'use strict';
+
+  var NONE_VALUE = ' none ';
+  var NONE_LABEL = '(none)';
+
+  function compareText(a, b) {
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  function compareValues(a, b, numeric) {
+    if (a === NONE_VALUE && b === NONE_VALUE) return 0;
+    if (a === NONE_VALUE) return 1;
+    if (b === NONE_VALUE) return -1;
+    return numeric ? (parseFloat(a) || 0) - (parseFloat(b) || 0) : compareText(a, b);
+  }
+
+  // Sort value: always `data-value` — a numeric column needs its real number here.
+  function cellValue(td) {
+    var v = td ? td.getAttribute('data-value') : null;
+    return v === null || v === '' ? NONE_VALUE : v;
+  }
+
+  // Filter value: `data-filter-value` when the cell sets one (a derived category),
+  // otherwise falls back to the same `data-value` sorting uses.
+  function cellFilterValue(td) {
+    var v = td ? td.getAttribute('data-filter-value') : null;
+    if (v === null) return cellValue(td);
+    return v === '' ? NONE_VALUE : v;
+  }
+
+  // Filter values (plural): `data-filter-values` when the cell sets one — a
+  // comma-separated list, e.g. several missing opportunity names — otherwise a
+  // single-element array wrapping cellFilterValue() so every other column's existing
+  // single-value behavior is unchanged.
+  function cellFilterValues(td) {
+    if (!td) return [NONE_VALUE];
+    var raw = td.getAttribute('data-filter-values');
+    if (raw === null) return [cellFilterValue(td)];
+    var parts = raw.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s !== ''; });
+    return parts.length ? parts : [NONE_VALUE];
+  }
+
+  function cellLabel(td, value) {
+    if (value === NONE_VALUE) return NONE_LABEL;
+    // A data-filter-values cell has no per-cell label to read — each value (e.g. an
+    // opportunity name) is already human-readable and is its own label.
+    if (td.getAttribute('data-filter-values') !== null) return value;
+    var label = td.getAttribute('data-filter-label') || td.getAttribute('data-label');
+    if (label !== null && label !== '') return label;
+    return (td.textContent || '').trim();
+  }
+
+  function TableController(table, idx) {
+    this.table = table;
+    this.thead = table.querySelector('thead');
+    this.tbody = table.querySelector('tbody');
+    this.columns = [];
+    this.sortState = null; // { index, dir: 'asc'|'desc' }
+    this.emptyRow = null;
+    this.countEls = [];
+    // Scoped per page + table position so a full-page reload (every admin form
+    // submit redirects back here) can restore what the user had set instead of
+    // silently dropping it.
+    this.storageKey = 'fs-state:' + location.pathname + ':' + (idx || 0);
+    this.build();
+  }
+
+  TableController.prototype.loadState = function () {
+    try {
+      var raw = sessionStorage.getItem(this.storageKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  };
+
+  TableController.prototype.saveState = function () {
+    try {
+      var filters = {};
+      this.columns.forEach(function (col) {
+        if (col.selected) filters[col.key] = col.selected.values;
+      });
+      sessionStorage.setItem(this.storageKey, JSON.stringify({ sortState: this.sortState, filters: filters }));
+    } catch (e) {
+      // Private-mode / quota errors just mean filters won't survive a reload.
+    }
+  };
+
+  TableController.prototype.applySavedState = function (saved) {
+    var self = this;
+    if (saved.filters) {
+      this.columns.forEach(function (col) {
+        if (col.filterable && Object.prototype.hasOwnProperty.call(saved.filters, col.key)) {
+          col.selected = { values: saved.filters[col.key] };
+          self.updateFunnel(col);
+        }
+      });
+    }
+    if (saved.sortState) {
+      var target = this.columns.filter(function (c) { return c.sortable && c.key === saved.sortState.key; })[0];
+      if (target) {
+        this.sortState = { key: saved.sortState.key, dir: saved.sortState.dir };
+        this.updateSortIcons();
+      }
+    }
+  };
+
+  TableController.prototype.updateSortIcons = function () {
+    var self = this;
+    this.columns.forEach(function (c) {
+      if (!c.sortable) return;
+      var icon = c.th.querySelector('.sort-icon');
+      if (!icon) return;
+      if (self.sortState && c.key === self.sortState.key) {
+        icon.className = 'sort-icon bi ' + (self.sortState.dir === 'asc' ? 'bi-caret-up-fill' : 'bi-caret-down-fill') + ' ms-1 text-danger';
+      } else {
+        icon.className = 'sort-icon bi bi-caret-down-fill opacity-25 ms-1';
+      }
+    });
+  };
+
+  TableController.prototype.build = function () {
+    var self = this;
+    var headerRow = this.thead && this.thead.querySelector('tr');
+    if (!headerRow) return;
+    var ths = Array.prototype.slice.call(headerRow.children);
+
+    var emptyCell = document.createElement('td');
+    emptyCell.colSpan = ths.length;
+    emptyCell.className = 'text-center text-muted py-4';
+    emptyCell.textContent = 'No members match the current filters.';
+    this.emptyRow = document.createElement('tr');
+    this.emptyRow.className = 'fs-empty-row d-none';
+    this.emptyRow.appendChild(emptyCell);
+
+    ths.forEach(function (th, index) {
+      var col = th.getAttribute('data-col');
+      if (!col) return;
+
+      var sortable = th.getAttribute('data-sortable') === 'true';
+      var sortType = th.getAttribute('data-sort-type') || 'text';
+      // The funnel's own value list can order itself differently than row sorting does
+      // — e.g. a numeric row sort by missing-count next to an alphabetized name list.
+      var filterSortType = th.getAttribute('data-filter-sort-type') || sortType;
+      var filterable = th.getAttribute('data-filter') !== 'none';
+      var def = {
+        key: col, index: index, th: th, sortable: sortable, sortType: sortType,
+        filterSortType: filterSortType, filterable: filterable, selected: null,
+      };
+      self.columns.push(def);
+
+      th.classList.add('fs-th');
+      var inner = th.querySelector('.th-inner') || th;
+
+      if (th.getAttribute('data-show-count') === 'true') {
+        var countEl = document.createElement('span');
+        countEl.className = 'fs-count';
+        countEl.setAttribute('data-fs-prefix', ' ');
+        var labelEl = inner.querySelector('.th-label');
+        if (labelEl && labelEl.parentNode) {
+          labelEl.parentNode.insertBefore(countEl, labelEl.nextSibling);
+        } else {
+          inner.appendChild(countEl);
+        }
+        self.countEls.push(countEl);
+      }
+
+      if (th.getAttribute('data-count') === 'true') {
+        var existing = inner.querySelector('.fs-count');
+        if (existing) self.countEls.push(existing);
+      }
+
+      if (sortable) {
+        var caret = document.createElement('i');
+        caret.className = 'bi bi-caret-down-fill opacity-25 sort-icon ms-1';
+        inner.appendChild(caret);
+        // Clicking anywhere in the label/caret area sorts; the funnel button and
+        // its dropdown are separate click targets sharing the same <th>.
+        inner.style.cursor = 'pointer';
+        inner.addEventListener('click', function (e) {
+          if (e.target.closest('.filter-funnel-btn') || e.target.closest('.dropdown-menu')) return;
+          self.toggleSort(def);
+        });
+      }
+
+      if (filterable) {
+        self.wireFilter(def, th);
+      }
+    });
+
+    this.tbody.appendChild(this.emptyRow);
+
+    var saved = this.loadState();
+    if (saved) {
+      this.applySavedState(saved);
+    } else {
+      this.applyDefaults();
+    }
+    this.render();
+  };
+
+  TableController.prototype.rows = function () {
+    // Excludes an empty-state placeholder row (a single <td colspan> spanning the
+    // whole table) — that row has no per-column cells to filter/sort and should
+    // always stay visible in place rather than being hidden or reordered.
+    return Array.prototype.slice.call(this.tbody.querySelectorAll(':scope > tr')).filter(function (tr) {
+      return !tr.querySelector(':scope > td[colspan]');
+    });
+  };
+
+  TableController.prototype.applyDefaults = function () {
+    var self = this;
+    this.columns.forEach(function (col) {
+      var def = col.th.getAttribute('data-filter-default');
+      if (def) {
+        var vals = self.uniqueValues(col);
+        var match = vals.filter(function (v) { return v.value === def; });
+        if (match.length) {
+          col.selected = { values: [def] };
+          self.updateFunnel(col);
+        }
+      }
+    });
+  };
+
+  TableController.prototype.uniqueValues = function (col) {
+    var seen = {};
+    var out = [];
+    this.rows().forEach(function (tr) {
+      var td = tr.children[col.index];
+      cellFilterValues(td).forEach(function (value) {
+        if (seen.hasOwnProperty(value)) return;
+        seen[value] = true;
+        out.push({ value: value, label: cellLabel(td, value) });
+      });
+    });
+    var numeric = col.filterSortType === 'num';
+    out.sort(function (a, b) { return compareValues(a.value, b.value, numeric); });
+    return out;
+  };
+
+  TableController.prototype.wireFilter = function (col, th) {
+    var self = this;
+    var wrap = document.createElement('div');
+    wrap.className = 'dropdown d-inline-block ms-1';
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'filter-funnel-btn';
+    btn.setAttribute('data-bs-toggle', 'dropdown');
+    btn.setAttribute('data-bs-auto-close', 'outside');
+    btn.innerHTML = '<i class="bi bi-funnel"></i>';
+
+    var menu = document.createElement('div');
+    menu.className = 'dropdown-menu filter-dropdown-menu p-2';
+
+    wrap.appendChild(btn);
+    wrap.appendChild(menu);
+    (th.querySelector('.th-inner') || th).appendChild(wrap);
+
+    col.button = btn;
+    col.menu = menu;
+
+    wrap.addEventListener('show.bs.dropdown', function () {
+      self.renderMenu(col);
+    });
+  };
+
+  TableController.prototype.renderMenu = function (col) {
+    var self = this;
+    var values = this.uniqueValues(col);
+    var committed = col.selected ? col.selected.values.slice() : values.map(function (v) { return v.value; });
+    var pending = committed.slice();
+
+    col.menu.innerHTML = '';
+
+    var search = document.createElement('input');
+    search.type = 'text';
+    search.className = 'form-control form-control-sm mb-2';
+    search.placeholder = 'Search...';
+    col.menu.appendChild(search);
+
+    var actions = document.createElement('div');
+    actions.className = 'd-flex justify-content-between mb-2';
+    var selectAll = document.createElement('a');
+    selectAll.href = '#';
+    selectAll.className = 'small';
+    selectAll.textContent = 'Select All';
+    var clear = document.createElement('a');
+    clear.href = '#';
+    clear.className = 'small';
+    clear.textContent = 'Clear';
+    actions.appendChild(selectAll);
+    actions.appendChild(clear);
+    col.menu.appendChild(actions);
+
+    var list = document.createElement('div');
+    list.className = 'filter-checkbox-list';
+    col.menu.appendChild(list);
+
+    var rows = values.map(function (v) {
+      var row = document.createElement('div');
+      row.className = 'form-check';
+      var input = document.createElement('input');
+      input.type = 'checkbox';
+      input.className = 'form-check-input';
+      input.checked = pending.indexOf(v.value) !== -1;
+      var label = document.createElement('label');
+      label.className = 'form-check-label small';
+      label.textContent = v.label;
+      var id = 'fs-' + col.key + '-' + Math.random().toString(36).slice(2, 8);
+      input.id = id;
+      label.setAttribute('for', id);
+      row.appendChild(input);
+      row.appendChild(label);
+      list.appendChild(row);
+
+      input.addEventListener('change', function () {
+        var i = pending.indexOf(v.value);
+        if (input.checked && i === -1) pending.push(v.value);
+        if (!input.checked && i !== -1) pending.splice(i, 1);
+      });
+
+      return { value: v.value, label: v.label, row: row, input: input };
+    });
+
+    search.addEventListener('input', function () {
+      var q = search.value.trim().toLowerCase();
+      rows.forEach(function (r) {
+        r.row.classList.toggle('d-none', q !== '' && r.label.toLowerCase().indexOf(q) === -1);
+      });
+    });
+
+    selectAll.addEventListener('click', function (e) {
+      e.preventDefault();
+      rows.forEach(function (r) {
+        if (r.row.classList.contains('d-none')) return;
+        r.input.checked = true;
+        if (pending.indexOf(r.value) === -1) pending.push(r.value);
+      });
+    });
+
+    clear.addEventListener('click', function (e) {
+      e.preventDefault();
+      rows.forEach(function (r) {
+        if (r.row.classList.contains('d-none')) return;
+        r.input.checked = false;
+        var i = pending.indexOf(r.value);
+        if (i !== -1) pending.splice(i, 1);
+      });
+    });
+
+    var footer = document.createElement('div');
+    footer.className = 'd-flex justify-content-end gap-2 mt-2';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'btn btn-sm btn-outline-secondary';
+    cancelBtn.textContent = 'Cancel';
+    var applyBtn = document.createElement('button');
+    applyBtn.type = 'button';
+    applyBtn.className = 'btn btn-sm btn-primary';
+    applyBtn.textContent = 'Apply';
+    footer.appendChild(cancelBtn);
+    footer.appendChild(applyBtn);
+    col.menu.appendChild(footer);
+
+    cancelBtn.addEventListener('click', function () {
+      self.closeDropdown(col);
+    });
+
+    applyBtn.addEventListener('click', function () {
+      col.selected = pending.length >= values.length ? null : { values: pending };
+      self.updateFunnel(col);
+      self.render();
+      self.closeDropdown(col);
+    });
+  };
+
+  TableController.prototype.closeDropdown = function (col) {
+    var dd = bootstrap.Dropdown.getInstance(col.button);
+    if (dd) dd.hide();
+  };
+
+  TableController.prototype.updateFunnel = function (col) {
+    var icon = col.button.querySelector('i');
+    if (col.selected) {
+      icon.className = 'bi bi-funnel-fill';
+      col.button.classList.add('active');
+    } else {
+      icon.className = 'bi bi-funnel';
+      col.button.classList.remove('active');
+    }
+  };
+
+  TableController.prototype.toggleSort = function (col) {
+    var dir = this.sortState && this.sortState.key === col.key && this.sortState.dir === 'asc' ? 'desc' : 'asc';
+    this.sortState = { key: col.key, dir: dir };
+    this.updateSortIcons();
+    this.render();
+  };
+
+  TableController.prototype.render = function () {
+    var self = this;
+    var rows = this.rows();
+    var visibleCount = 0;
+
+    rows.forEach(function (tr) {
+      var visible = self.columns.every(function (col) {
+        if (!col.selected) return true;
+        var td = tr.children[col.index];
+        // A single-value cell is just a 1-element array here, so this is a plain
+        // membership check for every other column — only a data-filter-values cell
+        // (several categories at once) makes this a real "has any checked one" test.
+        return cellFilterValues(td).some(function (v) { return col.selected.values.indexOf(v) !== -1; });
+      });
+      tr.classList.toggle('d-none', !visible);
+      if (visible) visibleCount++;
+    });
+
+
+    if (this.sortState) {
+      var sortKey = this.sortState.key;
+      var col = this.columns.filter(function (c) { return c.key === sortKey; })[0];
+      if (col) {
+        var numeric = col.sortType === 'num';
+        var dirMul = this.sortState.dir === 'asc' ? 1 : -1;
+        rows.sort(function (a, b) {
+          var av = cellValue(a.children[col.index]);
+          var bv = cellValue(b.children[col.index]);
+          return compareValues(av, bv, numeric) * dirMul;
+        });
+        rows.forEach(function (tr) { self.tbody.appendChild(tr); });
+      }
+    }
+
+    // Real rows exist but the current filter combination matches none of them —
+    // show a placeholder instead of leaving the table collapsed to just its header.
+    if (this.emptyRow) {
+      this.emptyRow.classList.toggle('d-none', !(rows.length > 0 && visibleCount === 0));
+      this.tbody.appendChild(this.emptyRow);
+    }
+
+    this.countEls.forEach(function (el) {
+      el.textContent = (el.getAttribute('data-fs-prefix') || '') + '(' + visibleCount + ')';
+    });
+    this.saveState();
+  };
+
+  function init(tableEl, idx) {
+    return new TableController(tableEl, idx);
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('table[data-filter-sort]').forEach(function (t, idx) { init(t, idx); });
+  });
+
+  window.TableFilterSort = { init: init };
+})();
