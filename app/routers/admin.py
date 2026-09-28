@@ -540,9 +540,7 @@ async def roster(request: Request, db: AsyncSession = Depends(get_db)):
     return templates.TemplateResponse(
         "admin/roster.html",
         {"request": request, "active_page": "roster",
-         "students": [m for m in members if m.kind == MemberKind.student],
-         "mentors": [m for m in members if m.kind == MemberKind.mentor],
-         "balances": balances, "last_synced": last_synced,
+         "members": members, "balances": balances, "last_synced": last_synced,
          "legion_configured": bool(settings.legion_base_url and settings.legion_api_key),
          "message": request.query_params.get("message")},
     )

@@ -32,6 +32,21 @@ async def test_upsert_creates_member_with_groups(db):
 
 
 @pytest.mark.asyncio
+async def test_upsert_mirrors_subteam_and_grade(db):
+    await _upsert_members(db, [_payload(
+        subteam={"slug": "software", "label": "Software"}, grade="junior",
+    )])
+    m = (await db.execute(select(Member).where(Member.member_code == "abc12345"))).scalars().first()
+    assert (m.subteam_slug, m.subteam_label, m.grade) == ("software", "Software", "junior")
+    assert m.subteam_display == "Software"
+
+    # Cleared in Legion -> cleared here.
+    await _upsert_members(db, [_payload(subteam=None, grade=None)])
+    await db.refresh(m)
+    assert (m.subteam_slug, m.grade, m.subteam_display) == (None, None, "—")
+
+
+@pytest.mark.asyncio
 async def test_upsert_is_idempotent_and_updates(db):
     await _upsert_members(db, [_payload()])
     await _upsert_members(db, [_payload(name="Pat Renamed", role="mentor", groups=[])])

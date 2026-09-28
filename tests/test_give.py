@@ -50,7 +50,7 @@ async def test_give_submit_grants_students_and_skips_mentors_in_the_same_batch(
 
 
 @pytest.mark.asyncio
-async def test_roster_splits_students_and_mentors_and_omits_mentor_balance(
+async def test_roster_is_one_filterable_table_and_omits_mentor_balance(
     client, db, admin_cookie, make_member,
 ):
     student = await make_member("Riley Student", kind=MemberKind.student)
@@ -58,13 +58,12 @@ async def test_roster_splits_students_and_mentors_and_omits_mentor_balance(
 
     resp = await client.get("/admin/roster", cookies={"mw_sso": admin_cookie})
     assert resp.status_code == 200
-    assert student.name in resp.text
-    assert mentor.name in resp.text
+    assert "data-filter-sort" in resp.text
+    assert "/static/js/table-filter-sort.js" in resp.text
 
-    students_tab = resp.text.split('id="students-tab"')[1].split('id="mentors-tab"')[0]
-    mentors_tab = resp.text.split('id="mentors-tab"')[1]
-    assert "Balance" in students_tab
-    assert student.name in students_tab
-    assert mentor.name not in students_tab
-    assert "Balance" not in mentors_tab
-    assert mentor.name in mentors_tab
+    rows = {name: resp.text.split(name, 1)[1].split("</tr>", 1)[0] for name in (student.name, mentor.name)}
+    assert 'data-label="Student"' in rows[student.name]
+    assert 'data-label="Mentor"' in rows[mentor.name]
+    # Mentors are staff, not reward recipients: no balance.
+    assert 'title="Mentors don\'t hold a balance"' in rows[mentor.name]
+    assert 'title="Mentors don\'t hold a balance"' not in rows[student.name]
