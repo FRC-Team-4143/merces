@@ -245,6 +245,13 @@ a fresh schema, which already has the column from `create_all()`), mirroring the
 siblings.
 
 ## UI conventions
+**Shared design (read first):** the look shared by every MARS/WARS app — palette, admin
+and portal shells, the sign-in card, tables, icons — is defined in
+`apps-infra/design/README.md`. `static/css/marswars.css` and
+`static/js/table-filter-sort.js` are vendored from `apps-infra/design/` — never edit
+them here; change the canonical copy and run `apps-infra/design/sync.sh`. App-only
+styles go in the base template's own `<style>` block, after the `marswars.css` link.
+
 Single dark theme shared with the siblings (`#0a0a0a` bg, `#111111` panels, accent red
 `#cc2200`, borders `#2a1a1a`). Admin pages extend `admin/base.html` (Bootstrap 5,
 sidebar); the portal extends `portal/base.html` (navbar).
